@@ -43541,6 +43541,24 @@ __webpack_unused_export__ = waitFor;
 
 __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
 /* harmony import */ var _mastra_workflows_prAgentWorkflow_js__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(5823);
+// In src/entrypoint.ts or early in github.ts
+console.log("--- Debug Environment ---");
+console.log("GITHUB_EVENT_PATH:", process.env.GITHUB_EVENT_PATH);
+console.log("GITHUB_EVENT_NAME:", process.env.GITHUB_EVENT_NAME);
+console.log("GITHUB_REPOSITORY:", process.env.GITHUB_REPOSITORY);
+console.log("GITHUB_SHA:", process.env.GITHUB_SHA);
+console.log("--- End Debug ---");
+// Also try reading the event file directly
+if (process.env.GITHUB_EVENT_PATH) {
+    try {
+        const fs = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 9896, 23)); // Use dynamic import for fs
+        const eventPayload = fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8');
+        console.log("Event Payload Content:", eventPayload);
+    }
+    catch (err) {
+        console.error("Error reading event payload:", err);
+    }
+}
 /**
  * Main entry point for the PR Agent GitHub Action.
  * Imports the main workflow, creates a run instance, and starts its execution.
@@ -67574,14 +67592,6 @@ switch (MODEL_PROVIDER) {
             throw new Error("MODEL_PROVIDER is \"openai-compatible\", but OPENAI_BASE_URL, OPENAI_API_KEY, or OPENAI_MODEL is missing.");
         }
         break;
-    case undefined:
-    case null:
-        // Allow no provider if no actions require a model
-        if (PR_AGENT_ACTIONS.length > 0 && PR_AGENT_ACTIONS.some(action => ["review", "summary"].includes(action))) {
-            throw new Error("MODEL_PROVIDER environment variable is not set, but required actions are configured.");
-        }
-        console.warn("MODEL_PROVIDER environment variable is not set. AI-related actions will be skipped.");
-        break; // No provider set, might be okay if no model is needed
     default:
         throw new Error(`Unsupported MODEL_PROVIDER: "${MODEL_PROVIDER}". Must be openai, azure, anthropic, google, or openai-compatible.`);
 }
@@ -67589,7 +67599,6 @@ console.log(`Config Loaded: Model Provider=${MODEL_PROVIDER || "None"}, Jira Con
 
 ;// CONCATENATED MODULE: ./src/utilities/jira.ts
 
-// Removed unused cheerio import
 
 /**
  * Zod schema representing the basic structure of a Jira Atlassian Document Format (ADF) object.
@@ -67730,6 +67739,10 @@ var micromatch_default = /*#__PURE__*/__nccwpck_require__.n(micromatch);
 
 
 
+console.log("--- Debug GitHub Context ---");
+console.log("Imported github.context:", JSON.stringify(github.context, null, 2));
+console.log("Context Payload PR Number:", github.context.payload?.pull_request?.number);
+console.log("--- End Debug ---");
 /**
  * Zod schema defining the structure for essential pull request details.
  */
@@ -85176,6 +85189,36 @@ module.exports = /*#__PURE__*/JSON.parse('{"name":"thread-stream","version":"3.1
 /******/ 	};
 /******/ })();
 /******/ 
+/******/ /* webpack/runtime/create fake namespace object */
+/******/ (() => {
+/******/ 	var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
+/******/ 	var leafPrototypes;
+/******/ 	// create a fake namespace object
+/******/ 	// mode & 1: value is a module id, require it
+/******/ 	// mode & 2: merge all properties of value into the ns
+/******/ 	// mode & 4: return value when already ns object
+/******/ 	// mode & 16: return value when it's Promise-like
+/******/ 	// mode & 8|1: behave like require
+/******/ 	__nccwpck_require__.t = function(value, mode) {
+/******/ 		if(mode & 1) value = this(value);
+/******/ 		if(mode & 8) return value;
+/******/ 		if(typeof value === 'object' && value) {
+/******/ 			if((mode & 4) && value.__esModule) return value;
+/******/ 			if((mode & 16) && typeof value.then === 'function') return value;
+/******/ 		}
+/******/ 		var ns = Object.create(null);
+/******/ 		__nccwpck_require__.r(ns);
+/******/ 		var def = {};
+/******/ 		leafPrototypes = leafPrototypes || [null, getProto({}), getProto([]), getProto(getProto)];
+/******/ 		for(var current = mode & 2 && value; typeof current == 'object' && !~leafPrototypes.indexOf(current); current = getProto(current)) {
+/******/ 			Object.getOwnPropertyNames(current).forEach((key) => (def[key] = () => (value[key])));
+/******/ 		}
+/******/ 		def['default'] = () => (value);
+/******/ 		__nccwpck_require__.d(ns, def);
+/******/ 		return ns;
+/******/ 	};
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/define property getters */
 /******/ (() => {
 /******/ 	// define getter functions for harmony exports
@@ -85191,6 +85234,17 @@ module.exports = /*#__PURE__*/JSON.parse('{"name":"thread-stream","version":"3.1
 /******/ /* webpack/runtime/hasOwnProperty shorthand */
 /******/ (() => {
 /******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/make namespace object */
+/******/ (() => {
+/******/ 	// define __esModule on exports
+/******/ 	__nccwpck_require__.r = (exports) => {
+/******/ 		if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 			Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 		}
+/******/ 		Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 	};
 /******/ })();
 /******/ 
 /******/ /* webpack/runtime/compat */
