@@ -1,0 +1,11 @@
+name: PR Agent
+description: GitHub Action to summarise and review pull requests
+author: Mark Hingston
+
+branding:
+  icon: git-pull-request
+  color: green
+
+runs:
+  using: node20
+  main: dist/index.js
