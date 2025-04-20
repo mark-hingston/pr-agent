@@ -1,0 +1,8 @@
+.DS_Store
+output.txt
+node_modules
+.mastra
+.env.development
+.env
+*.db
+*.db-*

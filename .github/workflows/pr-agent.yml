@@ -1,0 +1,163 @@
+name: PR Agent
+
+on:
+  pull_request:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  check_config:
+    runs-on: ubuntu-latest
+    outputs:
+      provider: ${{ steps.check.outputs.provider }}
+      actions: ${{ steps.check.outputs.actions }}
+    name: Check Configuration
+    steps:
+      - name: Check Config and Determine actions
+        id: check
+        uses: actions/github-script@v7
+        env:
+          GH_CONTEXT: ${{ toJson(github) }}
+          MODEL_PROVIDER: ${{ vars.MODEL_PROVIDER }}
+          OPENAI_API_KEY_SET: ${{ secrets.OPENAI_API_KEY != '' }}
+          OPENAI_MODEL_SET: ${{ vars.OPENAI_MODEL != '' }}
+          AZURE_API_KEY_SET: ${{ secrets.AZURE_API_KEY != '' }}
+          AZURE_OPENAI_RESOURCE_SET: ${{ vars.AZURE_OPENAI_RESOURCE != '' }}
+          AZURE_OPENAI_DEPLOYMENT_SET: ${{ vars.AZURE_OPENAI_DEPLOYMENT != '' }}
+          ANTHROPIC_API_KEY_SET: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          ANTHROPIC_MODEL_SET: ${{ vars.ANTHROPIC_MODEL != '' }}
+          GOOGLE_API_KEY_SET: ${{ secrets.GOOGLE_API_KEY != '' }}
+          GOOGLE_MODEL_SET: ${{ vars.GOOGLE_MODEL != '' }}
+          OPENAI_BASE_URL_SET: ${{ vars.OPENAI_BASE_URL != '' }}
+        with:
+          script: |
+            const githubContext = JSON.parse(process.env.GH_CONTEXT);
+            const eventName = githubContext.event_name;
+            const action = githubContext.event.action;
+            const senderType = githubContext.event.sender?.type;
+            const issueState = githubContext.event.issue?.state;
+            const isPRComment = githubContext.event.issue?.pull_request;
+            const commentBody = githubContext.event.comment?.body;
+
+            let provider = (process.env.MODEL_PROVIDER || '').toLowerCase();
+            const actions = new Set();
+            let configValid = false;
+
+            core.setOutput("provider", provider);
+            core.setOutput("actions", "[]"); // Default to empty
+
+            // --- 1. Check Sender Type ---
+            if (senderType === 'Bot') {
+              console.log("Sender is a Bot. Workflow will not proceed.");
+              return; // Skip rest of script
+            }
+
+            // --- 2. Determine actions based on Triggering Event ---
+            if (eventName === 'pull_request') {
+              if (action === 'opened') {
+                actions.add("summary");
+                actions.add("review");
+              }
+            } else if (eventName === 'issue_comment' && action === 'created') {
+              // Check if it's a comment on an open PR
+              if (isPRComment && issueState === 'open') {
+                const pattern = /\/(review|summary)/g;
+                commentBody.matchAll(pattern).forEach(match => actions.add(match[1]));
+              }
+            }
+
+            if (actions.size === 0) {
+              console.log(`Event did not trigger any recognized action actions.`);
+              return; // Skip rest of script
+            }
+
+            core.setOutput("actions", JSON.stringify(Array.from(actions)));
+
+            // --- 3. Validate Provider Configuration ---
+            console.log(`Checking configuration for provider: ${provider}`);
+            switch(provider) {
+              case "openai":
+                configValid = process.env.OPENAI_API_KEY_SET === 'true' && process.env.OPENAI_MODEL_SET === 'true';
+                if (!configValid) core.setFailed("OpenAI Configuration Error: Ensure OPENAI_API_KEY secret and OPENAI_MODEL repository/organization variable are set.");
+                break;
+              case "azure":
+                configValid = process.env.AZURE_API_KEY_SET === 'true' && process.env.AZURE_OPENAI_RESOURCE_SET === 'true' && process.env.AZURE_OPENAI_DEPLOYMENT_SET === 'true';
+                if (!configValid) core.setFailed("Azure Configuration Error: Ensure AZURE_API_KEY secret, AZURE_OPENAI_RESOURCE variable, and AZURE_OPENAI_DEPLOYMENT variable are set.");
+                break;
+              case "anthropic":
+                 configValid = process.env.ANTHROPIC_API_KEY_SET === 'true' && process.env.ANTHROPIC_MODEL_SET === 'true';
+                 if (!configValid) core.setFailed("Anthropic Configuration Error: Ensure ANTHROPIC_API_KEY secret and ANTHROPIC_MODEL variable are set.");
+                 break;
+              case "google":
+                 configValid = process.env.GOOGLE_API_KEY_SET === 'true' && process.env.GOOGLE_MODEL_SET === 'true';
+                 if (!configValid) core.setFailed("Google Configuration Error: Ensure GOOGLE_API_KEY secret and GOOGLE_MODEL variable are set.");
+                 break;
+              case "openai-compatible":
+                 configValid = process.env.OPENAI_BASE_URL_SET === 'true' && process.env.OPENAI_API_KEY_SET === 'true' && process.env.OPENAI_MODEL_SET === 'true';
+                 if (!configValid) core.setFailed("OpenAI Compatible Configuration Error: Ensure OPENAI_BASE_URL variable, OPENAI_API_KEY secret, and OPENAI_MODEL variable are set.");
+                 break;
+              case "":
+                core.setFailed("Configuration Error: MODEL_PROVIDER repository/organization variable is not set.");
+                configValid = false;
+                break;
+              default:
+                core.setFailed(`Configuration Error: Unsupported model provider '${provider}'. Valid values: openai, azure, anthropic, google, openai-compatible.`);
+                configValid = false;
+                break;
+            }
+
+            if (configValid) {
+              console.log(`Provider configuration for '${provider}' is valid.`);
+              console.log("Check job complete.");
+            } else {
+               console.log(`Provider configuration for '${provider}' is invalid.`);
+               core.setOutput("actions", "[]"); // Ensure actions is empty if config is invalid
+            }
+
+  pr_agent_job:
+    needs: check_config
+    # Condition to ensure the check job passed and found actions to run
+    if: needs.check_config.outputs.actions != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    name: Run PR Agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run PR Agent Action
+        id: pr-agent
+        uses: mark-hingston/pr-agent@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL_PROVIDER: ${{ needs.check_config.outputs.provider }}
+          PR_AGENT_ACTIONS: ${{ needs.check_config.outputs.actions }}
+
+          # Provider Specific Variables (Action selects based on MODEL_PROVIDER)
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || '' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || '' }}
+
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY || '' }}
+          AZURE_OPENAI_RESOURCE: ${{ vars.AZURE_OPENAI_RESOURCE || '' }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT || '' }}
+
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || '' }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || '' }}
+
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || '' }}
+          GOOGLE_MODEL: ${{ vars.GOOGLE_MODEL || '' }}
+
+          # Optional Jira Integration
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN || '' }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL || '' }}
+          JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL || '' }}
+
+          # Action Configuration
+          MAX_DIFF_CHARS: ${{ vars.MAX_DIFF_CHARS || '120000' }}
+          JIRA_BRANCH_REGEX: ${{ vars.JIRA_BRANCH_REGEX || '' }}
+          IGNORE_PATTERNS: ${{ vars.IGNORE_PATTERNS || '' }}
+          MODEL_TEMPERATURE: ${{ vars.MODEL_TEMPERATURE || '0.3' }}
