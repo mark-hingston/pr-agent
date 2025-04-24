@@ -76954,13 +76954,15 @@ const instructions = `You are an AI assistant specialising in analysing Git pull
 **Analysis Guidelines:**
 *   **Source of Truth:** Your summary MUST be based *exclusively* on the code additions and modifications (\`+\` lines) visible in the **Git Diff** provided below. Do NOT infer or report changes in files not present in the diff.
 *   **Context for Interpretation:** Use the **Jira Context** and **Commit Messages** ONLY to understand the *purpose* or *reason* behind the changes *you see in the diff*. This context helps determine the 'pr_type' and explain *why* the *visible code changes* were made.
-*   **Summarise Visible Changes:** Focus solely on lines starting with '+' in the diff. Your 'description' points and 'changes' breakdown must directly reflect these additions/modifications.
+*   **Summarize Visible Changes:** Focus solely on lines starting with '+' in the diff. Your 'description' points (key changes) and 'changes' breakdown must directly reflect these additions/modifications.
+*   **Key Changes Focus:** For the 'description' bullet points (key changes), focus on the *impact* and *purpose* of the changes reflected in the diff, informed by context. Highlight significant additions, removals, or modifications to functionality or logic.
+*   **Edge Cases:** If the provided diff contains no significant code changes (e.g., only documentation, comments, minor whitespace, or is empty after filtering), explicitly state this and simplify the summary accordingly (e.g., indicate "No code changes to summarize").
 *   Group related changes logically.
 *   Identify the primary type of the PR (Feature, Bugfix, Refactor, etc.) based on the overall goal suggested by the context and realised in the diff.
 
 **Negative Constraints:**
 *   **CRITICAL:** Do NOT mention any file or change if it is NOT explicitly present in the provided diff (+ lines), regardless of context (Jira/Commits). Stick strictly to the diff content.
-*   Do NOT list every single file that was modified. Focus on the most impactful changes reflected in the diff.
+*   Do NOT list every single file that was modified unless they are all significant. Focus on the most impactful changes reflected in the diff.
 *   Do NOT simply repeat commit messages verbatim. Provide a synthesised summary informed by them.
 *   Do NOT include minor changes like whitespace, formatting, or trivial comment updates unless they significantly alter logic or understanding.
 *   Do NOT summarise based *only* on the Jira ticket or commit messages if the diff doesn't reflect those changes. The summary must be grounded in the actual code modifications.
@@ -77214,31 +77216,33 @@ const PrReviewSchema = lib_z.object({
     test_coverage_assessment: lib_z.string().optional().describe("Comment on test coverage.")
 });
 /** Instructions guiding the PR Reviewer Agent's behaviour. */
-const prReviewerAgent_instructions = `You are an AI assistant performing code reviews on Git pull request diffs, generating feedback according to the provided JSON schema.
+const prReviewerAgent_instructions = `You are an AI assistant performing code reviews on Git pull request diffs, generating feedback according to the provided JSON schema. Maintain a helpful, collaborative, and objective tone.
 
 **Review Guidelines:**
 *   **Primary Focus:** Your analysis and feedback MUST focus *exclusively* on the added or modified code lines (\`+\` lines) within the **PR Diff** provided below.
-*   **Context for Interpretation:** Use the **PR description, commit messages, and Jira context** ONLY to understand the *intended purpose* of the code changes *you see in the diff*.
+*   **Context for Interpretation:** Use the **PR description, commit messages, and Jira context** ONLY to understand the *intended purpose* of the code changes *you see in the diff*. Use context sparingly and only when directly relevant to evaluating the *visible code*. If context is essential to explain *why* a visible change is problematic, explicitly state the link (e.g., 'The diff adds X, but Jira Y requires Z...').
 *   **Evaluate Visible Code:** Evaluate if the specific code *visible in the diff* logically contributes to the stated goals from the context. Identify potential issues (bugs, performance, security, readability, tests, best practices) *within the changed code itself*.
-*   Provide constructive, specific, and actionable feedback.
-*   Prioritise significant issues over minor stylistic preferences (unless explicitly configured otherwise). Issues related to unmet requirements are generally significant.
-*   Estimate the effort required to review the PR by choosing one of the following labels: "Trivial", "Minor", "Moderate", "Significant", "Complex". **Base this choice primarily on the size and complexity of the changes *within the provided diff*.** Use the following guidelines:
-    *   **"Trivial":** Very small changes (e.g., < 10-15 lines), typo fixes, simple config changes, adding straightforward tests. Requires minimal cognitive effort.
-    *   **"Minor":** Small, localized changes (e.g., < 50 lines), simple bug fixes, minor refactoring within a single function, straightforward feature additions. Requires focused review but is easy to understand.
-    *   **"Moderate":** Medium-sized changes (e.g., < 150-200 lines), changes spanning a few files, moderately complex logic changes, implementing a well-defined feature part. Requires careful reading and understanding of interactions.
-    *   **"Significant":** Large changes (e.g., > 200 lines), complex refactoring, changes affecting core logic or multiple components, implementing a complex feature. Requires significant time and deep understanding.
-    *   **"Complex":** Very large or extremely complex changes, major architectural shifts, introducing new paradigms or dependencies. Requires extensive review time and potentially domain expertise.
-*   **Do NOT base the choice solely on the overall feature complexity described in Jira/context if the diff itself is small and simple.** Choose the label reflecting the effort needed to review *this specific code*, not the entire feature development.
-*   **Provide a brief \`review_effort_reasoning\`** explaining your choice, focusing on the diff characteristics.
+*   **Actionability & Specificity:** Ensure feedback is highly specific and actionable. Instead of 'Improve variable name', suggest *why* it could be improved and offer a concrete alternative if obvious (e.g., 'Variable \`d\` is unclear; consider renaming to \`elapsedDays\` for clarity'). Clearly state *why* something is an issue.
+*   **Significance:** Focus feedback on issues that genuinely affect correctness, security, performance, maintainability, or significantly hinder readability based on the diff. Avoid flagging minor deviations if the code is clear and functional, unless it points to a potential underlying problem.
+*   **Estimate Review Effort:** Estimate the effort required to review the PR by choosing one label: "Trivial", "Minor", "Moderate", "Significant", "Complex". **Base this choice primarily on the size and complexity of the changes *within the provided diff*.** Guidelines:
+    *   **"Trivial":** < 10-15 lines, simple fixes/configs/tests. Minimal cognitive effort.
+    *   **"Minor":** < 50 lines, small localized changes, simple fixes/features. Focused review needed.
+    *   **"Moderate":** < 150-200 lines, changes across a few files, moderately complex logic. Careful reading required.
+    *   **"Significant":** > 200 lines, complex refactoring, core logic changes. Significant time needed.
+    *   **"Complex":** Very large/complex changes, architectural shifts. Extensive time/expertise needed.
+    *   **Do NOT base the choice solely on the overall feature complexity from context if the diff itself is simple.** Score the effort for *this specific code*.
+    *   Provide a brief \`review_effort_reasoning\` explaining your choice, focusing on diff characteristics.
+*   **Edge Cases:** If the diff contains no significant code changes (e.g., only docs, comments, whitespace, or is empty after filtering), state this clearly in the 'overall_assessment', select 'Trivial' effort, and limit feedback points.
 *   Acknowledge diff limitations (you only see code chunks, not the full file context).
 
 **Negative Constraints:**
-*   **CRITICAL:** Do NOT comment on code, files, or potential missing functionality if it was not part of the diff's additions/modifications (+ lines), even if implied by the context (Jira/Commits). All feedback points MUST link directly to a specific change visible in the diff.
-*   Do NOT suggest purely stylistic changes unless they significantly impact readability (e.g., overly complex code). Avoid debates on tabs vs. spaces, etc.
-*   Do NOT be overly nitpicky. Focus on meaningful improvements.
-*   Do NOT provide generic feedback like "needs tests" without suggesting *what* kind of tests might be missing or where, **potentially referencing the requirements for test case ideas.**
+*   **CRITICAL:** Do NOT comment on code, files, or potential missing functionality if it was not part of the diff's additions/modifications (+ lines), even if implied by context. All feedback points MUST link directly to a specific change visible in the diff.
+*   Do NOT suggest purely stylistic changes unless they significantly impact readability or violate known project conventions. Avoid debates on tabs vs. spaces, etc.
+*   Do NOT be overly nitpicky. Focus on meaningful improvements based on the Significance guideline above.
+*   Do NOT provide generic feedback like "needs tests" without suggesting *what* kind of tests might be missing or *where*, potentially referencing requirements for test case ideas related to the *changed code*.
 *   Do NOT include more than 10 feedback points. Consolidate related minor issues if necessary.
-*   Do NOT suggest adding type hints if the project doesn't use them or if it's outside the scope of the PR. (Example constraint - adjust as needed).
+*   Do NOT suggest adding type hints if the project doesn't use them or if it's outside the scope of the PR.
+*   Do NOT flag standard library usage or common idioms as issues unless demonstrably misused *in the specific context shown in the diff*.
 *   Focus feedback on the *implementation within the diff*, not on the requirements themselves (unless the *diff code* reveals a flaw/ambiguity in them).`;
 /**
  * Mastra Agent specifically configured to perform code reviews on pull request diffs.
@@ -77387,7 +77391,16 @@ const updateSummaryStep = new Step({
         const markerStartIdx = originalPrDescription.indexOf(GITHUB_SUMMARY_START_MARKER);
         const markerEndIdx = originalPrDescription.indexOf(GITHUB_SUMMARY_END_MARKER);
         if (markerStartIdx !== -1 && markerEndIdx !== -1 && markerEndIdx > markerStartIdx) {
-            userContent = originalPrDescription.substring(0, markerStartIdx).trim();
+            // Extract content before the start marker
+            userContent = originalPrDescription.substring(0, markerStartIdx);
+            // Check if the extracted content ends with the separator we add
+            const separatorPattern = "\n\n---\n\n";
+            if (userContent.endsWith(separatorPattern)) {
+                // Remove the previously added separator
+                userContent = userContent.substring(0, userContent.length - separatorPattern.length);
+            }
+            // Trim any remaining whitespace
+            userContent = userContent.trim();
             console.log("Found previous summary markers. Preserving content before them.");
         }
         else {
