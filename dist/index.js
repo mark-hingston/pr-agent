@@ -76952,21 +76952,18 @@ const PrSummarySchema = lib_z.object({
 const instructions = `You are an AI assistant specialising in analysing Git pull request diffs and generating concise, informative summaries according to the provided JSON schema.
 
 **Analysis Guidelines:**
-+ *   **Primary Source:** The **Git Diff** is the primary source of truth for **what** code was actually changed. Your summary must accurately reflect the modifications visible in the diff.
-+ *   **Contextual Understanding:** Use the provided **Jira Context** (if available) to understand the **motivation, requirements, and acceptance criteria** behind the changes. This will help you determine the correct 'pr_type' and write more insightful 'description' points explaining the 'why'.
-+ *   **Developer Intent:** Use the **Commit Messages** as hints to understand the developer's intent for specific changes, especially for complex modifications. Synthesise this information, do not just copy commit messages.
-*   Focus on lines starting with '+' in the diff to understand additions and changes.
-*   Infer the purpose and impact of the changes by synthesising the diff, Jira context, and commit messages. Prioritise significant functional changes, bug fixes, and new features.
+*   **Source of Truth:** Your summary MUST be based *exclusively* on the code additions and modifications (\`+\` lines) visible in the **Git Diff** provided below. Do NOT infer or report changes in files not present in the diff.
+*   **Context for Interpretation:** Use the **Jira Context** and **Commit Messages** ONLY to understand the *purpose* or *reason* behind the changes *you see in the diff*. This context helps determine the 'pr_type' and explain *why* the *visible code changes* were made.
+*   **Summarise Visible Changes:** Focus solely on lines starting with '+' in the diff. Your 'description' points and 'changes' breakdown must directly reflect these additions/modifications.
 *   Group related changes logically.
 *   Identify the primary type of the PR (Feature, Bugfix, Refactor, etc.) based on the overall goal suggested by the context and realised in the diff.
--   Suggest a clear, conventional commit-style title if the current one can be improved.
 
 **Negative Constraints:**
+*   **CRITICAL:** Do NOT mention any file or change if it is NOT explicitly present in the provided diff (+ lines), regardless of context (Jira/Commits). Stick strictly to the diff content.
 *   Do NOT list every single file that was modified. Focus on the most impactful changes reflected in the diff.
 *   Do NOT simply repeat commit messages verbatim. Provide a synthesised summary informed by them.
 *   Do NOT include minor changes like whitespace, formatting, or trivial comment updates unless they significantly alter logic or understanding.
 *   Do NOT summarise based *only* on the Jira ticket or commit messages if the diff doesn't reflect those changes. The summary must be grounded in the actual code modifications.
-*   Do NOT suggest overly generic or uninformative titles.
 *   Do NOT include empty arrays for categories in the "changes" object if there are no relevant changes for that category. Omit the key entirely if empty.`;
 /**
  * Mastra Agent specifically configured to analyse pull request diffs and generate summaries.
@@ -76987,7 +76984,11 @@ const prSummaryAgent = new Agent({
 function formatReviewToMarkdown(review) {
     let markdown = `## PR Review 🧐\n\n`;
     markdown += `**Overall Assessment:** ${review.overall_assessment}\n\n`;
-    markdown += `**Review Effort:** ${review.review_effort} / 5\n\n`;
+    markdown += `**Review Effort:** ${review.review_effort}\n\n`;
+    // Add reasoning if present
+    if (review.review_effort_reasoning) {
+        markdown += `*Justification:* ${review.review_effort_reasoning}\n\n`;
+    }
     if (review.feedback_points && review.feedback_points.length > 0) {
         markdown += `**Potential Issues & Suggestions:**\n\n`;
         review.feedback_points.forEach(point => {
@@ -77202,7 +77203,10 @@ const FeedbackPointSchema = lib_z.object({
  */
 const PrReviewSchema = lib_z.object({
     overall_assessment: lib_z.string().describe("A brief (1-2 sentence) high-level assessment."),
-    review_effort: lib_z.number().min(1).max(5).describe("Amount of effort required to review this pull request (1-5)"),
+    review_effort: lib_z.enum(["Trivial", "Minor", "Moderate", "Significant", "Complex"])
+        .describe("Estimated effort required to review this pull request's diff."),
+    review_effort_reasoning: lib_z.string().optional()
+        .describe("Brief justification for the chosen review effort level (e.g., 'Small diff, simple test logic change')."),
     feedback_points: lib_z.array(FeedbackPointSchema)
         .max(10)
         .describe("A list of specific feedback points or suggestions."),
@@ -77213,23 +77217,29 @@ const PrReviewSchema = lib_z.object({
 const prReviewerAgent_instructions = `You are an AI assistant performing code reviews on Git pull request diffs, generating feedback according to the provided JSON schema.
 
 **Review Guidelines:**
-*   Analyse the provided PR diff **along with the context from the PR description, commit messages, and linked Jira ticket information (if available).** Focus ONLY on added or modified code (+ lines) within the diff.
-*   **Use the PR description, commit messages, and Jira context (like requirements or acceptance criteria) to understand the *intended purpose* and *goals* of the changes.**
-*   **Evaluate if the implemented code logically fulfills these stated goals and requirements.** Does the code achieve what the Jira ticket or PR description says it should?
-*   Identify potential issues related to bugs, performance bottlenecks, security vulnerabilities, poor readability, lack of tests, or deviations from common best practices **in the context of the intended functionality.**
+*   **Primary Focus:** Your analysis and feedback MUST focus *exclusively* on the added or modified code lines (\`+\` lines) within the **PR Diff** provided below.
+*   **Context for Interpretation:** Use the **PR description, commit messages, and Jira context** ONLY to understand the *intended purpose* of the code changes *you see in the diff*.
+*   **Evaluate Visible Code:** Evaluate if the specific code *visible in the diff* logically contributes to the stated goals from the context. Identify potential issues (bugs, performance, security, readability, tests, best practices) *within the changed code itself*.
 *   Provide constructive, specific, and actionable feedback.
 *   Prioritise significant issues over minor stylistic preferences (unless explicitly configured otherwise). Issues related to unmet requirements are generally significant.
-*   Estimate the effort required to review the PR on a scale of 1 (trivial) to 5 (complex).
+*   Estimate the effort required to review the PR by choosing one of the following labels: "Trivial", "Minor", "Moderate", "Significant", "Complex". **Base this choice primarily on the size and complexity of the changes *within the provided diff*.** Use the following guidelines:
+    *   **"Trivial":** Very small changes (e.g., < 10-15 lines), typo fixes, simple config changes, adding straightforward tests. Requires minimal cognitive effort.
+    *   **"Minor":** Small, localized changes (e.g., < 50 lines), simple bug fixes, minor refactoring within a single function, straightforward feature additions. Requires focused review but is easy to understand.
+    *   **"Moderate":** Medium-sized changes (e.g., < 150-200 lines), changes spanning a few files, moderately complex logic changes, implementing a well-defined feature part. Requires careful reading and understanding of interactions.
+    *   **"Significant":** Large changes (e.g., > 200 lines), complex refactoring, changes affecting core logic or multiple components, implementing a complex feature. Requires significant time and deep understanding.
+    *   **"Complex":** Very large or extremely complex changes, major architectural shifts, introducing new paradigms or dependencies. Requires extensive review time and potentially domain expertise.
+*   **Do NOT base the choice solely on the overall feature complexity described in Jira/context if the diff itself is small and simple.** Choose the label reflecting the effort needed to review *this specific code*, not the entire feature development.
+*   **Provide a brief \`review_effort_reasoning\`** explaining your choice, focusing on the diff characteristics.
 *   Acknowledge diff limitations (you only see code chunks, not the full file context).
 
 **Negative Constraints:**
-*   Do NOT comment on code that was not part of the diff's additions/modifications (+ lines).
+*   **CRITICAL:** Do NOT comment on code, files, or potential missing functionality if it was not part of the diff's additions/modifications (+ lines), even if implied by the context (Jira/Commits). All feedback points MUST link directly to a specific change visible in the diff.
 *   Do NOT suggest purely stylistic changes unless they significantly impact readability (e.g., overly complex code). Avoid debates on tabs vs. spaces, etc.
 *   Do NOT be overly nitpicky. Focus on meaningful improvements.
 *   Do NOT provide generic feedback like "needs tests" without suggesting *what* kind of tests might be missing or where, **potentially referencing the requirements for test case ideas.**
 *   Do NOT include more than 10 feedback points. Consolidate related minor issues if necessary.
 *   Do NOT suggest adding type hints if the project doesn't use them or if it's outside the scope of the PR. (Example constraint - adjust as needed).
-*   **While using context is important, focus feedback on the *code's implementation* of the requirements, not on the validity of the requirements themselves (unless the code reveals a fundamental flaw or ambiguity in the requirement).**`;
+*   Focus feedback on the *implementation within the diff*, not on the requirements themselves (unless the *diff code* reveals a flaw/ambiguity in them).`;
 /**
  * Mastra Agent specifically configured to perform code reviews on pull request diffs.
  * It uses the defined instructions and schema to generate structured feedback.

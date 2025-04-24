@@ -9,7 +9,12 @@ import { PrSummary } from "../mastra/agents/prSummaryAgent.js"
 export function formatReviewToMarkdown(review: PrReview): string {
   let markdown = `## PR Review 🧐\n\n`;
   markdown += `**Overall Assessment:** ${review.overall_assessment}\n\n`;
-  markdown += `**Review Effort:** ${review.review_effort} / 5\n\n`;
+  markdown += `**Review Effort:** ${review.review_effort}\n\n`;
+  
+  // Add reasoning if present
+  if (review.review_effort_reasoning) {
+      markdown += `*Justification:* ${review.review_effort_reasoning}\n\n`;
+  }
 
   if (review.feedback_points && review.feedback_points.length > 0) {
     markdown += `**Potential Issues & Suggestions:**\n\n`;
