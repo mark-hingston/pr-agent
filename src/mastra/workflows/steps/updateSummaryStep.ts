@@ -47,7 +47,17 @@ export const updateSummaryStep = new Step({
         const markerEndIdx = originalPrDescription.indexOf(GITHUB_SUMMARY_END_MARKER);
 
         if (markerStartIdx !== -1 && markerEndIdx !== -1 && markerEndIdx > markerStartIdx) {
-            userContent = originalPrDescription.substring(0, markerStartIdx).trim();
+            // Extract content before the start marker
+            userContent = originalPrDescription.substring(0, markerStartIdx);
+
+            // Check if the extracted content ends with the separator we add
+            const separatorPattern = "\n\n---\n\n";
+            if (userContent.endsWith(separatorPattern)) {
+                // Remove the previously added separator
+                userContent = userContent.substring(0, userContent.length - separatorPattern.length);
+            }
+            // Trim any remaining whitespace
+            userContent = userContent.trim();
             console.log("Found previous summary markers. Preserving content before them.");
         } else {
             console.log("No previous summary markers found. Using full original description as user content.");
