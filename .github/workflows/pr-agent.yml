@@ -63,7 +63,10 @@ jobs:
               // Check if it's a comment on an open PR
               if (isPRComment && issueState === 'open') {
                 const pattern = /\/(review|summary)/g;
-                commentBody.matchAll(pattern).forEach(match => actions.add(match[1]));
+                
+                for (const match of commentBody.matchAll(pattern)) {
+                  actions.add(match[1]);
+                }
               }
             }
 
