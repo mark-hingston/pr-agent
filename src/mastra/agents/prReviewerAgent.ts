@@ -24,7 +24,7 @@ export const PrReviewSchema = z.object({
      .describe("Brief justification for the chosen review effort level (e.g., 'Small diff, simple test logic change')."),
   feedback_points: z.array(FeedbackPointSchema)
     .max(10)
-    .describe("A list of specific feedback points or suggestions."),
+    .describe("A list of specific feedback points or suggestions ordered by severity."),
   security_concerns: z.array(z.string()).describe("List of identified security concerns, or empty if none."),
   test_coverage_assessment: z.string().optional().describe("Comment on test coverage.")
 });
