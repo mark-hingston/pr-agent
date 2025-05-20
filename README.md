@@ -17,6 +17,76 @@ A GitHub Action to automatically summarise and review Pull Requests, enhancing c
 
 ## How it Works
 
+```mermaid
+graph TD
+    %% Define Styles
+    classDef init fill:#9BE09B,stroke:#2D882D,stroke-width:2px,color:#000,rounded:true;
+    classDef orchestrator fill:#85C1E9,stroke:#2471A3,stroke-width:2px,color:#000,rounded:true;
+    classDef action fill:#F9E79F,stroke:#D4AC0D,stroke-width:2px,color:#000,rounded:true;
+    classDef external fill:#E5E5E5,stroke:#424242,stroke-width:2px,color:#000,rounded:true;
+    classDef data fill:#F8C471,stroke:#CA6F1E,stroke-width:2px,color:#000,rounded:true;
+    classDef conditional fill:#FADBD8,stroke:#C0392B,stroke-width:2px,color:#000,rounded:true;
+    classDef decision fill:#AED6F1,stroke:#3498DB,stroke-width:2px,color:#000,shape:diamond;
+    classDef process fill:#F9E79F,stroke:#D4AC0D,stroke-width:2px,color:#000,rounded:true;
+    classDef io fill:#D2B4DE,stroke:#8E44AD,stroke-width:2px,color:#000,shape:parallelogram;
+    classDef storage fill:#F8C471,stroke:#CA6F1E,stroke-width:2px,color:#000,shape:cylinder;
+
+    %% Start & Initial Data Gathering (Common to both flows)
+    StartWorkflow["PR Agent Workflow Execution Starts"]:::init
+    StartWorkflow --> GetPRDetails["Fetch PR Details (Branch, Title, Desc, Commits)"]:::action
+    GetPRDetails --> GetJiraInfo["Fetch Jira Ticket Info (if configured & branch matches)"]:::action
+    GetJiraInfo --> GetPRDiff["Fetch PR Diff (apply ignore patterns)"]:::action
+    
+    GetPRDetails -->|PR Details| WorkflowStateDb[(Workflow State)]:::storage
+    GetJiraInfo -->|Jira Info| WorkflowStateDb
+    GetPRDiff -->|PR Diff| WorkflowStateDb
+    
+    ConfigData[("Configuration (Model, API Keys, Max Diff, etc.")]:::data
+    
+    %% Summary Flow
+    GetPRDiff --> CheckSummaryNeeded{Summary Action Enabled?}:::decision
+    
+    CheckSummaryNeeded -- "Yes" --> GenerateSummary["Generate PR Summary"]:::process
+    GenerateSummary -->|Reads: PR Details, Jira Info, PR Diff| WorkflowStateDb
+    GenerateSummary -->|Uses Config| ConfigData
+    GenerateSummary -->|Calls AI Model via Summary Agent| AIModel[AI Model Provider API]:::external
+    GenerateSummary -->|Writes: Generated Summary| WorkflowStateDb
+    
+    GenerateSummary --> FormatSummary["Format Summary to Markdown"]:::process
+    FormatSummary -->|Reads: Generated Summary| WorkflowStateDb
+    
+    FormatSummary --> UpdatePRDesc["Update PR Description with Summary"]:::action
+    UpdatePRDesc -->|Reads: Original PR Desc, Formatted Summary| WorkflowStateDb
+    UpdatePRDesc -->|Writes to| GitHubAPI_Desc["GitHub API (Update PR Description)"]:::external
+    UpdatePRDesc --> SummaryFlowEnd("Summary Flow Complete"):::init
+
+    CheckSummaryNeeded -- "No" --> SkipSummary["Skip Summary Generation"]:::action
+    SkipSummary --> SummaryFlowEnd
+
+    %% Review Flow (Starts after Summary Flow/Skip)
+    SummaryFlowEnd --> CheckReviewNeeded{Review Action Enabled?}:::decision
+    
+    CheckReviewNeeded -- "Yes" --> GenerateReview["Generate PR Review"]:::process
+    GenerateReview -->|Reads: PR Details, Jira Info, PR Diff| WorkflowStateDb
+    GenerateReview -->|Uses Config| ConfigData
+    GenerateReview -->|Calls AI Model via Reviewer Agent| AIModel
+    GenerateReview -->|Writes: Generated Review| WorkflowStateDb
+    
+    GenerateReview --> FormatReview["Format Review to Markdown"]:::process
+    FormatReview -->|Reads: Generated Review| WorkflowStateDb
+    
+    FormatReview --> PostReviewComment["Post Review as PR Comment"]:::action
+    PostReviewComment -->|Reads: Formatted Review| WorkflowStateDb
+    PostReviewComment -->|Checks for existing bot comments| GitHubAPI_Comment["GitHub API (Post/Edit Comment)"]:::external
+    PostReviewComment -->|Writes to| GitHubAPI_Comment
+    PostReviewComment --> ReviewFlowEnd("Review Flow Complete"):::init
+
+    CheckReviewNeeded -- "No" --> SkipReview["Skip Review Generation"]:::action
+    SkipReview --> ReviewFlowEnd
+
+    ReviewFlowEnd --> EndWorkflow["PR Agent Workflow Execution Ends"]:::init
+```
+
 This project is implemented as a GitHub Action built with TypeScript and Node.js. It leverages the `@mastra/core` library to define a workflow (`prAgentWorkflow`) that orchestrates the following steps:
 
 1.  **Trigger:** The action is triggered by `pull_request` (e.g., `opened`) or `issue_comment` events (specifically comments containing `/summary` or `/review` on an open PR).
