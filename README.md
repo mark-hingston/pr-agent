@@ -21,42 +21,27 @@ A GitHub Action to automatically summarise and review Pull Requests, enhancing c
 graph TD
     %% Define Styles
     classDef init fill:#9BE09B,stroke:#2D882D,stroke-width:2px,color:#000,rounded:true;
-    classDef orchestrator fill:#85C1E9,stroke:#2471A3,stroke-width:2px,color:#000,rounded:true;
     classDef action fill:#F9E79F,stroke:#D4AC0D,stroke-width:2px,color:#000,rounded:true;
     classDef external fill:#E5E5E5,stroke:#424242,stroke-width:2px,color:#000,rounded:true;
-    classDef data fill:#F8C471,stroke:#CA6F1E,stroke-width:2px,color:#000,rounded:true;
     classDef conditional fill:#FADBD8,stroke:#C0392B,stroke-width:2px,color:#000,rounded:true;
     classDef decision fill:#AED6F1,stroke:#3498DB,stroke-width:2px,color:#000,shape:diamond;
     classDef process fill:#F9E79F,stroke:#D4AC0D,stroke-width:2px,color:#000,rounded:true;
-    classDef io fill:#D2B4DE,stroke:#8E44AD,stroke-width:2px,color:#000,shape:parallelogram;
-    classDef storage fill:#F8C471,stroke:#CA6F1E,stroke-width:2px,color:#000,shape:cylinder;
 
     %% Start & Initial Data Gathering (Common to both flows)
     StartWorkflow["PR Agent Workflow Execution Starts"]:::init
     StartWorkflow --> GetPRDetails["Fetch PR Details (Branch, Title, Desc, Commits)"]:::action
     GetPRDetails --> GetJiraInfo["Fetch Jira Ticket Info (if configured & branch matches)"]:::action
-    GetJiraInfo --> GetPRDiff["Fetch PR Diff (apply ignore patterns)"]:::action
-    
-    GetPRDetails -->|PR Details| WorkflowStateDb[(Workflow State)]:::storage
-    GetJiraInfo -->|Jira Info| WorkflowStateDb
-    GetPRDiff -->|PR Diff| WorkflowStateDb
-    
-    ConfigData[("Configuration (Model, API Keys, Max Diff, etc.")]:::data
+    GetJiraInfo --> GetPRDiff["Fetch PR Diff (apply ignore patterns & truncate if needed)"]:::action
     
     %% Summary Flow
     GetPRDiff --> CheckSummaryNeeded{Summary Action Enabled?}:::decision
     
-    CheckSummaryNeeded -- "Yes" --> GenerateSummary["Generate PR Summary"]:::process
-    GenerateSummary -->|Reads: PR Details, Jira Info, PR Diff| WorkflowStateDb
-    GenerateSummary -->|Uses Config| ConfigData
+    CheckSummaryNeeded -- "Yes" --> GenerateSummary["Generate PR Summary (using PR Details, Jira Info, Diff & Config)"]:::process
     GenerateSummary -->|Calls AI Model via Summary Agent| AIModel[AI Model Provider API]:::external
-    GenerateSummary -->|Writes: Generated Summary| WorkflowStateDb
     
-    GenerateSummary --> FormatSummary["Format Summary to Markdown"]:::process
-    FormatSummary -->|Reads: Generated Summary| WorkflowStateDb
+    GenerateSummary --> FormatSummary["Format Generated Summary to Markdown"]:::process
     
-    FormatSummary --> UpdatePRDesc["Update PR Description with Summary"]:::action
-    UpdatePRDesc -->|Reads: Original PR Desc, Formatted Summary| WorkflowStateDb
+    FormatSummary --> UpdatePRDesc["Update PR Description with Formatted Summary"]:::action
     UpdatePRDesc -->|Writes to| GitHubAPI_Desc["GitHub API (Update PR Description)"]:::external
     UpdatePRDesc --> SummaryFlowEnd("Summary Flow Complete"):::init
 
@@ -66,19 +51,13 @@ graph TD
     %% Review Flow (Starts after Summary Flow/Skip)
     SummaryFlowEnd --> CheckReviewNeeded{Review Action Enabled?}:::decision
     
-    CheckReviewNeeded -- "Yes" --> GenerateReview["Generate PR Review"]:::process
-    GenerateReview -->|Reads: PR Details, Jira Info, PR Diff| WorkflowStateDb
-    GenerateReview -->|Uses Config| ConfigData
+    CheckReviewNeeded -- "Yes" --> GenerateReview["Generate PR Review (using PR Details, Jira Info, Diff & Config)"]:::process
     GenerateReview -->|Calls AI Model via Reviewer Agent| AIModel
-    GenerateReview -->|Writes: Generated Review| WorkflowStateDb
     
-    GenerateReview --> FormatReview["Format Review to Markdown"]:::process
-    FormatReview -->|Reads: Generated Review| WorkflowStateDb
+    GenerateReview --> FormatReview["Format Generated Review to Markdown"]:::process
     
-    FormatReview --> PostReviewComment["Post Review as PR Comment"]:::action
-    PostReviewComment -->|Reads: Formatted Review| WorkflowStateDb
-    PostReviewComment -->|Checks for existing bot comments| GitHubAPI_Comment["GitHub API (Post/Edit Comment)"]:::external
-    PostReviewComment -->|Writes to| GitHubAPI_Comment
+    FormatReview --> PostReviewComment["Post Formatted Review as PR Comment (Edit if existing bot comment)"]:::action
+    PostReviewComment -->|Writes to| GitHubAPI_Comment["GitHub API (Post/Edit Comment)"]:::external
     PostReviewComment --> ReviewFlowEnd("Review Flow Complete"):::init
 
     CheckReviewNeeded -- "No" --> SkipReview["Skip Review Generation"]:::action
